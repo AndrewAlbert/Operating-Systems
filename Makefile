@@ -1,4 +1,4 @@
-obj-m := Lab2_workqueue.o
+obj-m := Lab2_kthread.o Lab2_workqueue.o
 
 KVERSION := $(shell uname -r)
 KDIR := /lib/modules/$(KVERSION)/build
