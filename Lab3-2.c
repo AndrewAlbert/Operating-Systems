@@ -65,10 +65,8 @@ void cleanup_module(void){
 
 	//print info on results of test.
 	for(i = 0; i < 1000000; i++){
-		if(stat[i] > 0) printk(KERN_INFO "i: %d x: %d\n",i,stat[i]);
+		if(stat[i] > 0) printk(KERN_INFO "Number of elements incremented %d times: %d\n",i,stat[i]);
 	}
-
-	//print out stats of increments on arr[idx]
 	printk(KERN_INFO "Thread 1 increment count: cs1 = %d\n",cs1);
 	printk(KERN_INFO "Thread 2 increment count: cs2 = %d\n",cs2);
 	printk(KERN_INFO "Combined thread increment count: cs1 + cs2 = %d\n",cs1+cs2);
