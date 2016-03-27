@@ -11,7 +11,6 @@ MODULE_LICENSE("GPL");
 
 //kthread to collect battery info every second
 struct task_struct *ts;
-int id = 101;
 
 //Dynamic battery information
 int previousStatus = 0;
@@ -20,8 +19,8 @@ bool CapacityWasLow = false;
 bool CapacityWasFull = false;
 int customRate = 100;
 int count = 0;
-int battState = 0;
-int presentRate = 0;
+int battState = 0;	//0 is steady, 1 is discharging, 2 is charging
+int ChargeRate = 0;
 int remainingCapacity = 0;
 int presentVoltage = 0;
 
@@ -42,17 +41,21 @@ char* OEMinfo;
 
 #define BUFFER_SIZE 512
 
+//battery's info buffer
 struct proc_dir_entry *proc_entry_info, *root_dir_info = NULL;
 char result_buffer_info[BUFFER_SIZE];
-int temp_info = 1;
+int temp_info = 1; //ensures info is not read twice before writing to buffer
+
+//battery's stat buffer
 struct proc_dir_entry *proc_entry_stat, *root_dir_stat = NULL;
 char result_buffer_stat[BUFFER_SIZE];
-int temp_stat = 1;
+int temp_stat = 1; //ensures stat is not read twice before writing to buffer
 
 void batt_check(int y){
+	//battery is charging or discharging, calculate discharge rate (if applicable) and record remaining capacity
 	if(previousCapacity != remainingCapacity){
-		if(presentRate == -1 && count != 0){
-			customRate = ((previousCapacity - remainingCapacity)/(count * 60));
+		if(ChargeRate == -1 && count != 0){
+			customRate = 60*((previousCapacity - remainingCapacity)/(count));
 			customRate = (customRate < 0) ? customRate*-1 : customRate;
 			printk(KERN_INFO "Time between change: %d sec\n", count);
 			printk(KERN_INFO "Changed by: %d mAh/min\n", customRate);
@@ -63,28 +66,28 @@ void batt_check(int y){
 
 	//battery changes from charging to discharging and vice versa
 	if(previousStatus != battState)
-		printk(KERN_INFO "Changed: \ncharging status: %d\n charge remaining: %d mAh\n %d\n", battState, remainingCapacity, y);
+		printk(KERN_INFO "\nChanged: \n\tcharging status: %d\n\tcharge remaining: %d mAh\n\t%d\n", battState, remainingCapacity, y);
 	//battery capacity falls below warning level
 	else if(remainingCapacity <= designCapacityWarning){
 		set_current_state(TASK_INTERRUPTIBLE);
 		schedule_timeout(HZ * 29);
-		printk(KERN_INFO "Critical: \ncharging status: %d\n charge remaining: %d mAh\n %d\n", battState, remainingCapacity, y);
+		printk(KERN_INFO "\nCritical: \n\tcharging status: %d\n\tcharge remaining: %d mAh\n\t%d\n", battState, remainingCapacity, y);
 	}
 	//battery capacity falls below low level
 	else if(remainingCapacity <= designCapacityLow && !CapacityWasLow){
 		CapacityWasLow = true;
-		printk(KERN_INFO "Low: \ncharging status: %d\n charge remaining: %d mAh\n %d\n", battState, remainingCapacity, y);
+		printk(KERN_INFO "\nLow: \n\tcharging status: %d\n\tcharge remaining: %d mAh\n\t%d\n", battState, remainingCapacity, y);
 	}
 	//battery is fully charged
 	else if(battState == 0 && !CapacityWasFull){
 		CapacityWasFull = true;
-		printk(KERN_INFO "Full: \ncharging status: %d\n charge remaining: %d mAh\n %d\n", battState, remainingCapacity, y);
+		printk(KERN_INFO "\nFull: \n\tcharging status: %d\n\tcharge remaining: %d mAh\n\t%d\n", battState, remainingCapacity, y);
 	}
 	//battery is charged back above warning level
-	else if((remainingCapacity > designCapacityWarning && CapacityWasLow) || (CapacityWasFull && battState != 0)){
-		CapacityWasLow = false;
-		CapacityWasFull = false;
-	}
+	else if((remainingCapacity > designCapacityWarning) && CapacityWasLow) CapacityWasLow = false;
+	//battery discharges below full level
+	else if(CapacityWasFull && battState != 0) CapacityWasFull = false;
+
 	//record battery's charging/discharging status
 	previousStatus = battState;
 }
@@ -94,7 +97,8 @@ int batt_thread(void* data){
 	acpi_handle handle;
 	union acpi_object *result = NULL;
 	struct acpi_buffer buffer = {ACPI_ALLOCATE_BUFFER, NULL};
-
+	
+	//grab batter information every second while the kthread is in use
 	while(!kthread_should_stop()){
 		set_current_state(TASK_INTERRUPTIBLE);
 		schedule_timeout(HZ);
@@ -107,7 +111,7 @@ int batt_thread(void* data){
 		//get dynamic battery information
 		if(result){
 			battState = result->package.elements[0].integer.value;
-			presentRate = result->package.elements[1].integer.value;
+			ChargeRate = result->package.elements[1].integer.value;
 			remainingCapacity = result->package.elements[2].integer.value;
 			presentVoltage = result->package.elements[3].integer.value;
 		previousCapacity = (previousCapacity == 0) ? remainingCapacity : previousCapacity;
@@ -143,11 +147,12 @@ ssize_t read_stat(struct file *fd, char __user *buf, size_t c, loff_t *off){
 		return 0;
 	}
 
-	if(presentRate == -1){
-		presentRate = customRate;
+	//if discharging, calculate a custom discharge rate
+	if(ChargeRate == -1){
+		ChargeRate = customRate;
 	}
 
-	sprintf(result_buffer_stat, "%d %d %d %d\n", battState, presentRate, remainingCapacity, presentVoltage);
+	sprintf(result_buffer_stat, "%d %d %d %d\n", battState, ChargeRate, remainingCapacity, presentVoltage);
 	length = strlen(result_buffer_stat);
 	if(copy_to_user(buf, result_buffer_stat, length)) return -EFAULT;
 	temp_stat = 0;
@@ -225,13 +230,13 @@ int init_module( void ){
 	}
 
 	//start kthread to get battery information
-	ts = kthread_run(batt_thread, (void*)&id, "spawn");
+	ts = kthread_run(batt_thread, NULL, "battchecl");
 	return 0;
 }
 
 void cleanup_module(void){
 	remove_proc_entry("battery_info.txt", root_dir_info);
 	remove_proc_entry("battery_stat.txt", root_dir_stat);
-	if(kthread_stop(ts)) printk(KERN_EMERG "The thread is a zombie\n");
+	if(kthread_stop(ts)) printk(KERN_EMERG "The thread was not destroyed!\n");
 	printk(KERN_INFO "Module unloaded successfully\n");
 }
