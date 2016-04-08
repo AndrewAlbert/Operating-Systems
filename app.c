@@ -12,7 +12,7 @@ int main(int argc, char **argv)
 
 	//ensure command line argument count is correct
 	if(argc > 3 || argc < 2){
-		printf("Invalid usage of app");
+		printf("Invalid usage of app. Argument 1 should be 'read' or 'write' and argument 2 should be a message of 100 characters or less if argument 1 is 'write'\n");
 		exit(0);
 	}
 	else if(argc == 3){
@@ -44,6 +44,7 @@ int main(int argc, char **argv)
 	}
 	else printf("invalid operation, use 'read' or 'write' in argument 1\n");
 
+	//close device
 	close(fd);
 	
 	return 0;
