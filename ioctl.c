@@ -1,3 +1,4 @@
+//Modified from Dr. Franco's given ioctl-07.c file for lab 8
 /*
  *  ioctl.c - the process to use ioctl's to control the kernel module
  *
@@ -35,7 +36,7 @@
  * device specifics, such as ioctl numbers and the major device file. 
  */
 #include "chardev.h"
-MODULE_LICENSE("GPL");
+
 /* 
  * Functions for the ioctl calls 
  */
@@ -46,14 +47,14 @@ ioctl_set_msg(int file_desc, char *message) {
    /* IOCTL_SET_MSG is an ioctl number */
    ret_val = ioctl(file_desc, IOCTL_SET_MSG, message,0,0);
    if (ret_val < 0) {
-      printf("ioctl_set_msg failed:%d\n", ret_val);
+      printf("ioctl_set_msg failed: %d\n", ret_val);
       exit(-1);
    }
 }
 
 ioctl_get_msg(int file_desc) {
    int ret_val;
-   char message[100];
+   char message[128];
    
    /* 
     * Warning - this is dangerous because we don't tell
@@ -65,11 +66,11 @@ ioctl_get_msg(int file_desc) {
     */
    ret_val = ioctl(file_desc, IOCTL_GET_MSG, message,0,0);
    if (ret_val < 0) {
-      printf("ioctl_get_msg failed:%d\n", ret_val);
+      printf("ioctl_get_msg failed: %d\n", ret_val);
       exit(-1);
    }
    
-   printf("get_msg message:%s\n", message);
+   printf("get_msg message: %s\n", message);
 }
 
 ioctl_get_nth_byte(int file_desc) {
@@ -82,80 +83,133 @@ ioctl_get_nth_byte(int file_desc) {
    do {
       c = ioctl(file_desc, IOCTL_GET_NTH_BYTE, i++,0,0);
       if (c < 0) {
-	 printf("ioctl_get_nth_byte failed at the %d'th byte:\n", i);
+	 printf("ioctl_get_nth_byte failed at byte #%d\n", i);
 	 exit(-1);
       }
-      
       putchar(c);
    } while (c != 0);
    putchar('\n');
 }
 
+//get memory address for a new block of data
 get_mem(int file_desc, int size){
 	int ret_val;
-	char message[100];
 	ret_val = ioctl(file_desc, GET_MEM, size);
 	if(ret_val < 0){
-		printf("get_mem failed: %d\n", ret_val);
+		printf("ioctl_get_mem failed: %d\n", ret_val);
 	}
 	return ret_val;
 }
 
-read_mem(int file_desc, int ref, char *buf, int size){
+//read contents of memory in block for reference
+read_mem(int file_desc, int reference, char *buffer, int size){
 	int ret_val;
-	ioctl(file_desc, SET_REF, ref);
+	ioctl(file_desc, SET_REF, reference);
 	ioctl(file_desc, SET_SIZE, size);
-	ret_val = ioctl(file_desc, READ_MEM, buf);
+	ret_val = ioctl(file_desc, READ_MEM, buffer);
 
 	if(ret_val < 0){
-		printf("read_mem failked: %d\n", ret_val);
+		printf("ioctl_read_mem failed: %d\n", ret_val);
 	}
 }
 
-write_mem(int file_desc, int ref, char *buf){
+//write contents of memory in block for reference
+write_mem(int file_desc, int reference, char *buffer){
 	int ret_val;
-	ioctl(file_desc, SET_REF, ref);
-	ret_val = ioctl(file_desc, WRITE_MEM, buf);
+	ioctl(file_desc, SET_REF, reference);
+	ret_val = ioctl(file_desc, WRITE_MEM, buffer);
 	if(ret_val < 0){
-		printf("write_mem failed: %d\n", ret_val);
+		printf("ioctl_write_mem failed: %d\n", ret_val);
 	}
 	return ret_val;
 }
 
-free_mem(int file_desc, int ref){
+//free the memory block holding the reference
+free_mem(int file_desc, int reference){
 	int ret_val;
 	char message[100];
-	ret_val = ioctl(file_desc, FREE_MEM, ref);
+	ret_val = ioctl(file_desc, FREE_MEM, reference);
 	if(ret_val < 0){
 		printf("free_mem failed: %d\n", ret_val);
 	}
 }
 
+//print contents of buddy allocator tree structure
 print_tree(int file_desc){
 	ioctl(file_desc, PRINT_TREE, 0);
 }
 
 /* Main - Call the ioctl functions */
 main() {
-   int file_desc, ret_val, ref;
-	char buffer[4096];
-   char *msg0 = " ";
-   char *msg1 = "Put that in your pipe and smoke it";
-   char *msg2 = "Try this on for size";
+	int file_desc, ret_val, reference;
+	char buffer[4096]; //buffer for reading/writing to memory
+	char *msg0 = " ";
+	char *msg1 = "Put that in your pipe and smoke it";
+	char *msg2 = "Try this on for size";
    
-   file_desc = open("/dev/char_dev", 0);
-   if (file_desc < 0) {
-      printf("Can't open device file: /dev/char_dev\n");
-      exit(-1);
-   }
-   
-   ioctl_set_msg(file_desc, msg0);
-   ioctl_get_msg(file_desc);
-   ioctl_set_msg(file_desc, msg1);
-   ioctl_get_msg(file_desc);
-   ioctl_set_msg(file_desc, msg2);
-   ioctl_get_msg(file_desc);
-   ioctl_get_nth_byte(file_desc);
-   
-   close(file_desc);
+	file_desc = open("/dev/char_dev", 0);
+	if (file_desc < 0) {
+		printf("Can't open device file: /dev/char_dev\n");
+		exit(-1);
+	}
+  
+	//original test from ioctl-07.c 
+	ioctl_set_msg(file_desc, msg0);
+  ioctl_get_msg(file_desc);
+  ioctl_set_msg(file_desc, msg1);
+  ioctl_get_msg(file_desc);
+  ioctl_set_msg(file_desc, msg2);
+  ioctl_get_msg(file_desc);
+  ioctl_get_nth_byte(file_desc);
+	
+	//test setting a few memory locations and retrieving them
+	printf("Begin sample memory writes\n");
+	reference = get_mem(file_desc, 100);
+	sprintf(buffer, "Hey buddy");
+	write_mem(file_desc, reference, buffer);
+	read_mem(file_desc, reference, buffer, 100);
+	printf("buffer contents after read: %s\n", buffer);
+	free_mem(file_desc, reference);
+
+	//test with multiple writes
+
+	int ref1, ref2, ref3, ref4;
+	
+	printf("\nTest using a simple conversation\n");
+	ref1 = get_mem(file_desc, 100);
+	sprintf(buffer, "Hey buddy");
+	write_mem(file_desc, ref1, buffer);
+
+	ref2 = get_mem(file_desc, 100);
+	sprintf(buffer, "I'm not your buddy, guy");
+	write_mem(file_desc, ref2, buffer);
+
+	ref3 = get_mem(file_desc, 100);
+	sprintf(buffer, "I'm not your guy, friend");
+	write_mem(file_desc, ref3, buffer);
+
+	ref4 = get_mem(file_desc, 100);
+	sprintf(buffer, "He's not your friend, buddy");
+	write_mem(file_desc, ref4, buffer);
+	
+	read_mem(file_desc, ref1, buffer, 100);
+	printf("read: buffer for ref1: %s\n", buffer);
+	read_mem(file_desc, ref2, buffer, 100);
+	printf("read: buffer for ref2: %s\n", buffer);
+	read_mem(file_desc, ref3, buffer, 100);
+	printf("read: buffer for ref3: %s\n", buffer);
+	read_mem(file_desc, ref4, buffer, 100);
+	printf("read: buffer for ref4: %s\n", buffer);
+
+	//print contents of tree
+  print_tree(file_desc);
+
+	printf("\nFree references\n");
+	free_mem(file_desc, reference);
+	free_mem(file_desc, ref1);
+	free_mem(file_desc, ref2);
+	free_mem(file_desc, ref3);
+	free_mem(file_desc, ref4);
+	
+  close(file_desc);
 }

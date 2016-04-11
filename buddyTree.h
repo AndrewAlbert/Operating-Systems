@@ -9,6 +9,8 @@ contains all of the information needed to implement the tree structure for the b
 #include <stdbool.h>
 
 #define MEM_SIZE (1 << 12)
+
+//The smallest size memory block we will use in bytes (2^7)
 #define SMALLEST_SIZE 128
 
 //define the block structure for the buddy allocator and its root node for the tree
@@ -46,7 +48,7 @@ struct block* start_buddy_allocator(int size){
 	return newBlock;
 }
 
-//dynamically create a new block structure
+//create a new block structure of a given size at a given address
 struct block* create_block(int addr, int size){
 	struct block* newBlock;
 	newBlock = (struct block*)kmalloc(sizeof(struct block), GFP_KERNEL);
@@ -143,27 +145,27 @@ int read_mem(struct block* parent, int ref, char* buf, int size){
 	return 0;
 }
 
-int write_mem(struct block** parent, int ref, char* buf){
+int write_mem(struct block** parent, int reference, char* buffer){
 	int index;
 	struct block* writeBlock;
 
-	if(ref < 0 || ref > MEM_SIZE){
+	if(reference < 0 || reference > MEM_SIZE){
 		printk(KERN_INFO "Error tried to write outside of allocated memory\n");
 		return -1;
 	}
-	for(index = 0; buf[index] != '\0'; index++){}
-	writeBlock = findBlock(*parent, ref);
+	for(index = 0; buffer[index] != '\0'; index++){}
+	writeBlock = findBlock(*parent, reference);
 
 	if(index >= writeBlock->size){
 		printk(KERN_INFO "Error tried to write %d bytes to block of size %d bytes\n", index, writeBlock->size);
 		return -1;
 	}
 
-	for(index = 0; buf[index] != '\0'; index++){
-		(*parent)->memory[ref - (*parent)->address + index] = buf[index];
+	for(index = 0; buffer[index] != '\0'; index++){
+		(*parent)->memory[reference - (*parent)->address + index] = buffer[index];
 	}
 
-	(*parent)->memory[ref - (*parent)->address + index] = '\0';
+	(*parent)->memory[reference - (*parent)->address + index] = '\0';
 
 	if(writeBlock) writeBlock->occupied = true;
 	else{
@@ -174,13 +176,14 @@ int write_mem(struct block** parent, int ref, char* buf){
 	return 0;
 }
 
-void print_tree(struct block* root){
-	if(root){
-		print_tree(root->Lchild);
-		if(!root->isParent){
-			printk(KERN_INFO "Block Print:\n\tsize: %d\n\taddress: %d\n\toccupied: %s\n\tparent: %s\n\n", root->size, root->address, root->occupied ? "true" : "false", root->isParent ? "true" : "false");
+///print all non-parent blocks in the buddy allocator
+void print_tree(struct block* parent){
+	if(parent){
+		print_tree(parent->Lchild);
+		if(!parent->isParent){
+			printk(KERN_INFO "Block Print:\n\tsize: %d\n\taddress: %d\n\toccupied: %s\n\tparent: %s\n\n", parent->size, parent->address, parent->occupied ? "true" : "false", parent->isParent ? "true" : "false");
 		}
-		print_tree(root->Rchild);
+		print_tree(parent->Rchild);
 	}
 }
 
@@ -196,7 +199,7 @@ struct block* findBlock(struct block* parent, int ref){
 	return returnBlock;
 }
 
-//find the smallest empty block in tree that can hold the given size
+//find the smallest empty block in the tree that can hold the given size
 int find_empty(struct block* parent, int size){
 	if(parent){
 		find_empty(parent->Lchild, size);
@@ -210,7 +213,7 @@ int find_empty(struct block* parent, int size){
 	return -1;
 }
 
-//split a block if it is too big for the input
+//split a block if it is bigger than needed for the input
 void split_block(struct block* parent){
 	int newSize;
 	newSize = parent->size / 2;

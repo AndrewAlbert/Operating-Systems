@@ -1,3 +1,4 @@
+//Modified from Dr. Franco's given chardev.h header file for lab 8
 /*
  *  chardev.h - the header file with the ioctl definitions.
  *
@@ -9,7 +10,6 @@
 #ifndef CHARDEV_H
 #define CHARDEV_H
 
-MODULE_LICENSE("GPL");
 #include <linux/ioctl.h>
 
 /* 
@@ -64,6 +64,7 @@ MODULE_LICENSE("GPL");
  */
 #define DEVICE_FILE_NAME "char_dev"
 
+//IOCTL numbers for buddy allocator memory functions
 #define GET_MEM _IOWR(MAJOR_NUM, 3, int)
 #define READ_MEM _IOWR(MAJOR_NUM, 4, char *)
 #define WRITE_MEM _IOWR(MAJOR_NUM, 5, char *)
